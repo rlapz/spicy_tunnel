@@ -12,7 +12,7 @@ pub const Config = struct {
     bridge_port: u16,
     listen_host: []const u8,
     listen_port: u16,
-    server_hash: []const u8,
+    server_name: []const u8,
 };
 
 allocator: mem.Allocator,
