@@ -17,3 +17,15 @@ pub fn setSignalHandler(handler: handlerFn) !void {
     try os.sigaction(SIG.INT, &act, null);
     try os.sigaction(SIG.HUP, &act, null);
 }
+
+pub fn toSlice(src: [*]const u8, size: usize) []const u8 {
+    var i: usize = 0;
+    while (i < size) {
+        if (src[i] == '\x00')
+            break;
+
+        i += 1;
+    }
+
+    return src[0..i];
+}
