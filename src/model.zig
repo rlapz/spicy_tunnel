@@ -3,11 +3,11 @@ pub const Request = struct {
 };
 
 pub const Response = struct {
-    code: Code,
+    code: i64,
     message: []const u8,
 
-    pub const Code = enum(u32) {
-        ACCEPTED,
-        REJECTED,
+    pub const code = struct {
+        pub const ACCEPTED = 0;
+        pub const REJECTED = 1;
     };
 };
