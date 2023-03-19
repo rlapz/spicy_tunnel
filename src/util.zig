@@ -6,7 +6,7 @@ const SIG = os.SIG;
 
 pub const handlerFn = fn (c_int) callconv(.C) void;
 
-pub fn setSignalHandler(handler: handlerFn) !void {
+pub fn setSignalHandler(handler: *const handlerFn) !void {
     var act = mem.zeroInit(os.Sigaction, .{
         .handler = .{ .handler = SIG.IGN },
     });

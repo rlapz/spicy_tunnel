@@ -3,9 +3,9 @@ const mem = std.mem;
 const os = std.os;
 const log = std.log;
 
-const model = @import("../model.zig");
-const util = @import("../util.zig");
-const snet = @import("../net.zig");
+const model = @import("model.zig");
+const util = @import("util.zig");
+const snet = @import("net.zig");
 
 pub const Config = struct {
     bridge_host: []const u8,
@@ -46,7 +46,11 @@ const Client = struct {
         if (!util.validateServerName(cfg.server_name))
             return error.InvalidServerName;
 
-        self.bridge_fd = try snet.connectToBridge(cfg.bridge_host, cfg.bridge_port);
+        self.bridge_fd = try snet.connectToBridge(
+            self.allocator,
+            cfg.bridge_host,
+            cfg.bridge_port,
+        );
         try self.sendRequest();
         self.recvResponse() catch |err| {
             log.err("{s}", .{@errorName(err)});
@@ -65,6 +69,8 @@ const Client = struct {
     fn mainLoop(self: *Client) !void {
         const cfd = try os.accept(self.listen_fd.?, null, null, os.SOCK.NONBLOCK);
 
+        log.info("new client: {}", .{cfd});
+
         self.is_alive = true;
         return snet.forward(
             self.bridge_fd.?,
@@ -82,7 +88,7 @@ const Client = struct {
         req.setServerName(self.config.server_name);
         req.code = .CLIENT;
 
-        return snet.sendRequest(buff, self.bridge_fd);
+        return snet.sendRequest(buff, self.bridge_fd.?);
     }
 
     fn recvResponse(self: *Client) !void {
@@ -90,7 +96,7 @@ const Client = struct {
         var buff = mem.asBytes(&res);
 
         @memset(buff, 0, @sizeOf(@TypeOf(res)));
-        try snet.recvResponse(buff, self.bridge_fd);
+        try snet.recvResponse(buff, self.bridge_fd.?);
 
         log.info("response: {s}\n", .{res.getMessage()});
         return switch (res.code) {
@@ -128,4 +134,10 @@ fn intrHandler(sig: c_int) callconv(.C) void {
     }
 }
 
-test "client run" {}
+test "client run" {
+    try run(.{
+        .bridge_host = "127.0.0.1",
+        .bridge_port = 80,
+        .server_name = "aaaa",
+    });
+}

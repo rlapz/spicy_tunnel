@@ -48,7 +48,7 @@ pub fn sendRequest(buffer: []const u8, sfd: os.socket_t) !void {
     var snt: usize = 0;
 
     while (snt < len) {
-        const s = try os.send(sfd, buffer[snt..], len - snt, 0);
+        const s = try os.send(sfd, buffer[snt..], 0);
         if (s == 0)
             break;
 
@@ -64,7 +64,7 @@ pub fn recvResponse(buffer: []u8, sfd: os.socket_t) !void {
     var rcvd: usize = 0;
 
     while (rcvd < len) {
-        const r = try os.recv(sfd, buffer[rcvd..], len - rcvd, 0);
+        const r = try os.recv(sfd, buffer[rcvd..], 0);
         if (r == 0)
             break;
 
