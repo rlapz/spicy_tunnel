@@ -6,6 +6,8 @@ const json = std.json;
 const log = std.log;
 
 const model = @import("../model.zig");
+const util = @import("../util.zig");
+const snet = @import("../net.zig");
 
 const Client = @This();
 
@@ -41,6 +43,9 @@ pub fn deinit(self: *Client) void {
 pub fn run(self: *Client) !void {
     if (self.config.server_name.len >= model.Request.server_name_size)
         return error.ServerNameTooLong;
+
+    if (!util.validateServerName(self.config.server_name))
+        return error.InvalidServerName;
 }
 
 //
@@ -48,5 +53,25 @@ pub fn run(self: *Client) !void {
 //
 fn sendRequest(self: *Client) !void {
     var req: model.Request = undefined;
+    var buff = mem.asBytes(&req);
+
+    @memset(buff, 0, @sizeOf(@TypeOf(req)));
     req.setServerName(self.config.server_name);
+
+    return snet.sendRequest(buff, self.bridge_fd);
+}
+
+fn recvRequest(self: *Client) !void {
+    var res: model.Response = undefined;
+    var buff = mem.asBytes(&res);
+
+    @memset(buff, 0, @sizeOf(@TypeOf(res)));
+    try snet.recvResponse(buff, self.bridge_fd);
+
+    log.info("{s}\n", .{res.getMessage()});
+    return switch (res.code) {
+        model.Response.code.ACCEPTED => {},
+        model.Response.code.REJECTED => error.Rejected,
+        else => error.InvalidResponseCode,
+    };
 }
