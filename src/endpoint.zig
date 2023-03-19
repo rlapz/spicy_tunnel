@@ -14,23 +14,24 @@ pub const Config = struct {
     listen_port: u16 = 8003,
     server_name: []const u8,
     buffer_size: usize = 4096,
+    endpoint_type: model.Request.Code,
 };
 
-const Client = struct {
+pub const Endpoint = struct {
     allocator: mem.Allocator,
     config: Config,
     is_alive: bool = false,
     listen_fd: ?os.socket_t = null,
     bridge_fd: ?os.socket_t = null,
 
-    fn init(allocator: mem.Allocator, config: Config) Client {
+    pub fn init(allocator: mem.Allocator, config: Config) Endpoint {
         return .{
             .allocator = allocator,
             .config = config,
         };
     }
 
-    fn deinit(self: *Client) void {
+    pub fn deinit(self: *Endpoint) void {
         if (self.listen_fd) |fd|
             os.closeSocket(fd);
 
@@ -38,7 +39,7 @@ const Client = struct {
             os.closeSocket(fd);
     }
 
-    fn run(self: *Client) !void {
+    pub fn run(self: *Endpoint) !void {
         const cfg = &self.config;
         if (cfg.server_name.len >= model.Request.server_name_size)
             return error.ServerNameTooLong;
@@ -66,7 +67,15 @@ const Client = struct {
         return self.mainLoop();
     }
 
-    fn mainLoop(self: *Client) !void {
+    pub fn stop(self: *Endpoint) void {
+        if (self.is_alive) {
+            self.is_alive = false;
+            if (self.listen_fd) |fd|
+                os.shutdown(fd, .both) catch {};
+        }
+    }
+
+    fn mainLoop(self: *Endpoint) !void {
         const cfd = try os.accept(self.listen_fd.?, null, null, os.SOCK.NONBLOCK);
 
         log.info("new client: {}", .{cfd});
@@ -80,18 +89,18 @@ const Client = struct {
         );
     }
 
-    fn sendRequest(self: *Client) !void {
+    fn sendRequest(self: *Endpoint) !void {
         var req: model.Request = undefined;
         var buff = mem.asBytes(&req);
 
         @memset(buff, 0, @sizeOf(@TypeOf(req)));
         req.setServerName(self.config.server_name);
-        req.code = .CLIENT;
+        req.code = self.config.endpoint_type;
 
         return snet.sendRequest(buff, self.bridge_fd.?);
     }
 
-    fn recvResponse(self: *Client) !void {
+    fn recvResponse(self: *Endpoint) !void {
         var res: model.Response = undefined;
         var buff = mem.asBytes(&res);
 
@@ -108,18 +117,17 @@ const Client = struct {
 };
 
 //
-// entry point
+// Entrypoint
 //
-var client_g: *Client = undefined;
-
+var endpoint_g: *Endpoint = undefined;
 pub fn run(config: Config) !void {
-    var cl = Client.init(std.heap.page_allocator, config);
-    defer cl.deinit();
+    var e = Endpoint.init(std.heap.page_allocator, config);
+    defer e.deinit();
 
-    client_g = &cl;
+    endpoint_g = &e;
     try util.setSignalHandler(intrHandler);
 
-    return cl.run();
+    return e.run();
 }
 
 // private
@@ -127,11 +135,7 @@ fn intrHandler(sig: c_int) callconv(.C) void {
     util.stderr("\n", .{});
     log.err("Interrupted: {}", .{sig});
 
-    if (client_g.is_alive) {
-        client_g.is_alive = false;
-        if (client_g.listen_fd) |fd|
-            os.shutdown(fd, .both) catch {};
-    }
+    endpoint_g.stop();
 }
 
 test "client run" {
@@ -139,5 +143,6 @@ test "client run" {
         .bridge_host = "127.0.0.1",
         .bridge_port = 80,
         .server_name = "aaaa",
+        .endpoint_type = .CLIENT,
     });
 }
