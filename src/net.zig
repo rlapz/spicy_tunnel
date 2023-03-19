@@ -2,6 +2,7 @@ const std = @import("std");
 const mem = std.mem;
 const net = std.net;
 const os = std.os;
+const linux = os.linux;
 const log = std.log;
 
 pub fn setupListener(host: []const u8, port: u16) !os.socket_t {
@@ -72,6 +73,44 @@ pub fn recvResponse(buffer: []u8, sfd: os.socket_t) !void {
 
     if (rcvd != len)
         return error.BrokenPacket;
+}
+
+fn splice(in: os.fd_t, out: os.fd_t, size: usize, flags: u32) !usize {
+    const rc = linux.syscall6(
+        .splice,
+        @bitCast(usize, @as(isize, in)),
+        0,
+        @bitCast(usize, @as(isize, out)),
+        0,
+        size,
+        flags,
+    );
+
+    switch (os.errno(rc)) {
+        .SUCCESS => return rc,
+        .AGAIN => return error.WouldBlock,
+        .CONNRESET => return error.ConnectionResetByPeer,
+        .BADF => unreachable,
+        .INVAL => unreachable,
+        .NOMEM => unreachable,
+        .SPIPE => unreachable,
+        else => |err| return os.unexpectedErrno(err),
+    }
+}
+
+fn spipe(in: os.fd_t, out: os.fd_t, pipe: [*]const os.fd_t, size: usize) !void {
+    const flags = 0x1 | 0x2; // MOVE | NONBLOCK
+    var rd = try splice(in, pipe[1], size, flags);
+    if (rd == 0)
+        return error.EndOfFile;
+
+    while (rd > 0) {
+        const wr = try splice(pipe[0], out, rd, flags);
+        if (wr == 0)
+            return error.EndOfFile;
+
+        rd -= wr;
+    }
 }
 
 //
