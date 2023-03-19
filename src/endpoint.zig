@@ -17,21 +17,21 @@ pub const Config = struct {
     endpoint_type: model.Request.Code,
 };
 
-pub const Endpoint = struct {
+const Endpoint = struct {
     allocator: mem.Allocator,
     config: Config,
     is_alive: bool = false,
     listen_fd: ?os.socket_t = null,
     bridge_fd: ?os.socket_t = null,
 
-    pub fn init(allocator: mem.Allocator, config: Config) Endpoint {
+    fn init(allocator: mem.Allocator, config: Config) Endpoint {
         return .{
             .allocator = allocator,
             .config = config,
         };
     }
 
-    pub fn deinit(self: *Endpoint) void {
+    fn deinit(self: *Endpoint) void {
         if (self.listen_fd) |fd|
             os.closeSocket(fd);
 
@@ -39,7 +39,7 @@ pub const Endpoint = struct {
             os.closeSocket(fd);
     }
 
-    pub fn run(self: *Endpoint) !void {
+    fn run(self: *Endpoint) !void {
         const cfg = &self.config;
         if (cfg.server_name.len >= model.Request.server_name_size)
             return error.ServerNameTooLong;
@@ -67,7 +67,7 @@ pub const Endpoint = struct {
         return self.mainLoop();
     }
 
-    pub fn stop(self: *Endpoint) void {
+    fn stop(self: *Endpoint) void {
         if (self.is_alive) {
             self.is_alive = false;
             if (self.listen_fd) |fd|
