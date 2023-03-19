@@ -42,6 +42,9 @@ pub inline fn stderr(comptime fmt: []const u8, args: anytype) void {
 }
 
 pub inline fn validateServerName(str: []const u8) bool {
+    if (str.len == 0)
+        return false;
+
     for (str) |v| {
         if (!std.ascii.isASCII(v) or !std.ascii.isAlphanumeric(v))
             return false;
