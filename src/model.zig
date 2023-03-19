@@ -26,6 +26,15 @@ pub const Request = extern struct {
         mem.copy(u8, &self.server_name, name);
         self.server_name[name.len] = '\x00';
     }
+
+    //
+    // assertions
+    //
+    comptime {
+        assert(@sizeOf(Request) == 256);
+        assert(@offsetOf(Request, "code") == 0);
+        assert(@offsetOf(Request, "server_name") == 1);
+    }
 };
 
 pub const Response = extern struct {
@@ -51,6 +60,9 @@ pub const Response = extern struct {
         self.message[msg.len] = '\x00';
     }
 
+    //
+    // assertions
+    //
     comptime {
         assert(@sizeOf(Response) == 256);
         assert(@offsetOf(Response, "code") == 0);
