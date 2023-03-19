@@ -8,6 +8,8 @@ const log = std.log;
 const model = @import("../model.zig");
 const util = @import("../util.zig");
 const snet = @import("../net.zig");
+const req_code = model.Request.code;
+const res_code = model.Response.code;
 
 const Client = @This();
 
@@ -77,6 +79,7 @@ fn sendRequest(self: *Client) !void {
 
     @memset(buff, 0, @sizeOf(@TypeOf(req)));
     req.setServerName(self.config.server_name);
+    req.code = req_code.CLIENT;
 
     return snet.sendRequest(buff, self.bridge_fd);
 }
@@ -90,8 +93,8 @@ fn recvResponse(self: *Client) !void {
 
     log.info("response: {s}\n", .{res.getMessage()});
     return switch (res.code) {
-        model.Response.code.ACCEPTED => {},
-        model.Response.code.REJECTED => error.Rejected,
+        res_code.ACCEPTED => {},
+        res_code.REJECTED => error.Rejected,
         else => error.InvalidResponseCode,
     };
 }

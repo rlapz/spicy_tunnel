@@ -5,10 +5,16 @@ const mem = std.mem;
 const util = @import("util.zig");
 
 pub const Request = extern struct {
+    code: u8,
     // null-terminated string
     server_name: [server_name_size]u8,
 
     pub const server_name_size = 256;
+
+    pub const code = struct {
+        pub const SERVER = 0;
+        pub const CLIENT = 1;
+    };
 
     pub inline fn getServerName(self: Request) []const u8 {
         return util.toSlice(&self.server_name, server_name_size - 1);
