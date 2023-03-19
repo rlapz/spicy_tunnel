@@ -1,5 +1,6 @@
 const std = @import("std");
 const mem = std.mem;
+const os = std.os;
 const log = std.log;
 
 const util = @import("util.zig");
@@ -21,9 +22,14 @@ pub fn run(config: Config) !void {
 
 // private
 fn intrHandler(sig: c_int) callconv(.C) void {
+    util.stderr("\n", .{});
     log.err("Interrupted: {}", .{sig});
 
-    client_g.is_alive = false;
+    if (client_g.is_alive) {
+        client_g.is_alive = false;
+        if (client_g.listen_fd) |fd|
+            os.shutdown(fd, .both) catch {};
+    }
 }
 
 test "client run" {}
