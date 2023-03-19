@@ -9,8 +9,6 @@ const model = @import("../model.zig");
 const util = @import("../util.zig");
 const snet = @import("../net.zig");
 
-const BUFFER_SIZE = 4096;
-
 const Client = @This();
 
 pub const Config = struct {
@@ -19,6 +17,7 @@ pub const Config = struct {
     listen_host: []const u8,
     listen_port: u16,
     server_name: []const u8,
+    buffer_size: usize,
 };
 
 allocator: mem.Allocator,
@@ -73,7 +72,12 @@ fn mainLoop(self: *Client) !void {
     const cfd = try os.accept(self.listen_fd.?, null, null, os.SOCK.NONBLOCK);
 
     self.is_alive = true;
-    return snet.forward(self.bridge_fd.?, cfd, BUFFER_SIZE, &self.is_alive);
+    return snet.forward(
+        self.bridge_fd.?,
+        cfd,
+        self.config.buffer_size,
+        &self.is_alive,
+    );
 }
 
 fn sendRequest(self: *Client) !void {
