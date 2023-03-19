@@ -41,16 +41,36 @@ pub fn deinit(self: *Client) void {
 }
 
 pub fn run(self: *Client) !void {
-    if (self.config.server_name.len >= model.Request.server_name_size)
+    const cfg = &self.config;
+    if (cfg.server_name.len >= model.Request.server_name_size)
         return error.ServerNameTooLong;
 
-    if (!util.validateServerName(self.config.server_name))
+    if (!util.validateServerName(cfg.server_name))
         return error.InvalidServerName;
+
+    self.bridge_fd = try snet.connectToBridge(cfg.bridge_host, cfg.bridge_port);
+    try self.sendRequest();
+    self.recvResponse() catch |err| {
+        log.err("{s}", .{@errorName(err)});
+        return;
+    };
+
+    log.info("listening on: [{s}:{}] -> \"{s}\"\n", .{
+        cfg.listen_host,
+        cfg.listen_port,
+        cfg.server_name,
+    });
+    self.listen_fd = try snet.setupListener(cfg.listen_host, cfg.listen_port);
+    return self.mainLoop();
 }
 
 //
 // private
 //
+fn mainLoop(self: *Client) !void {
+    _ = self;
+}
+
 fn sendRequest(self: *Client) !void {
     var req: model.Request = undefined;
     var buff = mem.asBytes(&req);
@@ -61,14 +81,14 @@ fn sendRequest(self: *Client) !void {
     return snet.sendRequest(buff, self.bridge_fd);
 }
 
-fn recvRequest(self: *Client) !void {
+fn recvResponse(self: *Client) !void {
     var res: model.Response = undefined;
     var buff = mem.asBytes(&res);
 
     @memset(buff, 0, @sizeOf(@TypeOf(res)));
     try snet.recvResponse(buff, self.bridge_fd);
 
-    log.info("{s}\n", .{res.getMessage()});
+    log.info("response: {s}\n", .{res.getMessage()});
     return switch (res.code) {
         model.Response.code.ACCEPTED => {},
         model.Response.code.REJECTED => error.Rejected,
