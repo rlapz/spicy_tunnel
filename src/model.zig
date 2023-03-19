@@ -49,3 +49,24 @@ pub const Response = extern struct {
         assert(@offsetOf(Response, "message") == 1);
     }
 };
+
+//
+// unit test
+//
+test "Request" {
+    const name = "hello world!";
+
+    var r: Request = undefined;
+    r.setServerName(name);
+
+    assert(mem.eql(u8, name, r.getServerName()));
+}
+
+test "Response" {
+    const msg = "Failed!!";
+
+    var r: Response = undefined;
+    r.setMessage(msg);
+
+    assert(mem.eql(u8, msg, r.getMessage()));
+}
