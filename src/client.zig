@@ -5,12 +5,12 @@ const log = std.log;
 const util = @import("util.zig");
 const Client = @import("client/Client.zig");
 
-pub const Args = Client.Args;
+pub const Config = Client.Config;
 
 var client_g: *Client = undefined;
 
-pub fn run(args: Args) !void {
-    var cl = Client.init(std.heap.page_allocator, args);
+pub fn run(config: Config) !void {
+    var cl = Client.init(std.heap.page_allocator, config);
     defer cl.deinit();
 
     client_g = &cl;
