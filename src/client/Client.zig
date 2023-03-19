@@ -5,6 +5,8 @@ const os = std.os;
 const json = std.json;
 const log = std.log;
 
+const model = @import("../model.zig");
+
 const Client = @This();
 
 pub const Config = struct {
@@ -37,7 +39,8 @@ pub fn deinit(self: *Client) void {
 }
 
 pub fn run(self: *Client) !void {
-    _ = self;
+    if (self.config.server_name.len >= model.Request.server_name_size)
+        return error.ServerNameTooLong;
 }
 
 //
@@ -87,5 +90,6 @@ fn connectToBridge(self: *Client) !void {
 }
 
 fn sendRequest(self: *Client) !void {
-    _ = self;
+    var req: model.Request = undefined;
+    req.setServerName(self.config.server_name);
 }
