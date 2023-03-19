@@ -75,7 +75,7 @@ pub fn recvResponse(buffer: []u8, sfd: os.socket_t) !void {
         return error.BrokenPacket;
 }
 
-fn splice(in: os.fd_t, out: os.fd_t, size: usize, flags: u32) !usize {
+pub fn splice(in: os.fd_t, out: os.fd_t, size: usize, flags: u32) !usize {
     const rc = linux.syscall6(
         .splice,
         @bitCast(usize, @as(isize, in)),
@@ -98,7 +98,7 @@ fn splice(in: os.fd_t, out: os.fd_t, size: usize, flags: u32) !usize {
     }
 }
 
-fn spipe(in: os.fd_t, out: os.fd_t, pipe: [*]const os.fd_t, size: usize) !void {
+pub fn spipe(in: os.fd_t, out: os.fd_t, pipe: [*]const os.fd_t, size: usize) !void {
     const flags = 0x1 | 0x2; // MOVE | NONBLOCK
     var rd = try splice(in, pipe[1], size, flags);
     if (rd == 0)
