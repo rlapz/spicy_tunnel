@@ -29,3 +29,13 @@ pub fn toSlice(src: [*]const u8, size: usize) []const u8 {
 
     return src[0..i];
 }
+
+pub inline fn stdout(comptime fmt: []const u8, args: anytype) void {
+    std.io.getStdOut().writer().print(fmt, args) catch
+        return;
+}
+
+pub inline fn stderr(comptime fmt: []const u8, args: anytype) void {
+    std.io.getStdErr().writer().print(fmt, args) catch
+        return;
+}
