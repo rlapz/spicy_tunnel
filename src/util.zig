@@ -1,6 +1,7 @@
 const std = @import("std");
 const mem = std.mem;
 const os = std.os;
+const assert = std.debug.assert;
 const SIG = os.SIG;
 
 pub const handlerFn = fn (c_int) callconv(.C) void;
@@ -38,4 +39,24 @@ pub inline fn stdout(comptime fmt: []const u8, args: anytype) void {
 pub inline fn stderr(comptime fmt: []const u8, args: anytype) void {
     std.io.getStdErr().writer().print(fmt, args) catch
         return;
+}
+
+pub inline fn validateServerName(str: []const u8) bool {
+    for (str) |v| {
+        if (!std.ascii.isASCII(v) or !std.ascii.isAlphanumeric(v))
+            return false;
+    }
+
+    return true;
+}
+
+//
+// Unit test
+//
+test "util: validateServerName" {
+    const str1 = "aaaaaabbbccc?xa00";
+    assert(validateServerName(str1) == false);
+
+    const str2 = "aaabbcc0123809809jkjkjk";
+    assert(validateServerName(str2));
 }
