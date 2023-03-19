@@ -9,6 +9,8 @@ const model = @import("../model.zig");
 const util = @import("../util.zig");
 const snet = @import("../net.zig");
 
+const BUFFER_SIZE = 4096;
+
 const Client = @This();
 
 pub const Config = struct {
@@ -68,7 +70,40 @@ pub fn run(self: *Client) !void {
 // private
 //
 fn mainLoop(self: *Client) !void {
-    _ = self;
+    var pfds: [2]os.pollfd = undefined;
+    pfds[0].events = os.POLL.IN;
+    pfds[1].events = os.POLL.IN;
+
+    const pipe = try os.pipe();
+    defer for (pipe) |p|
+        os.close(p);
+
+    const cfd = try os.accept(self.listen_fd.?, null, null, os.SOCK.NONBLOCK);
+    defer os.close(cfd);
+
+    const bridge_fd = self.bridge_fd.?;
+    pfds[0].fd = cfd;
+    pfds[1].fd = bridge_fd;
+
+    self.is_alive = true;
+    while (self.is_alive) {
+        if ((try os.poll(&pfds, 1000)) == 0)
+            continue;
+
+        if ((pfds[0].revents & os.POLL.IN) != 0) {
+            snet.spipe(cfd, bridge_fd, &pipe, BUFFER_SIZE) catch |err| switch (err) {
+                error.WouldBlock => continue,
+                else => break,
+            };
+        }
+
+        if ((pfds[1].revents & os.POLL.IN) != 0) {
+            snet.spipe(bridge_fd, cfd, &pipe, BUFFER_SIZE) catch |err| switch (err) {
+                error.WouldBlock => continue,
+                else => break,
+            };
+        }
+    }
 }
 
 fn sendRequest(self: *Client) !void {
