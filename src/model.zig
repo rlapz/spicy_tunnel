@@ -5,15 +5,16 @@ const mem = std.mem;
 const util = @import("util.zig");
 
 pub const Request = extern struct {
-    code: u8,
+    code: Code,
     // null-terminated string
     server_name: [server_name_size]u8,
 
-    pub const server_name_size = 256;
+    pub const server_name_size = 255;
 
-    pub const code = struct {
-        pub const SERVER = 0;
-        pub const CLIENT = 1;
+    pub const Code = enum(u8) {
+        SERVER,
+        CLIENT,
+        _,
     };
 
     pub inline fn getServerName(self: Request) []const u8 {
@@ -28,15 +29,16 @@ pub const Request = extern struct {
 };
 
 pub const Response = extern struct {
-    code: u8,
+    code: Code,
     // null-terminated string
     message: [message_size]u8,
 
     pub const message_size = 255;
 
-    pub const code = struct {
-        pub const ACCEPTED = 0;
-        pub const REJECTED = 1;
+    pub const Code = enum(u8) {
+        ACCEPTED,
+        REJECTED,
+        _,
     };
 
     // convert null-terminated string -> slice string
