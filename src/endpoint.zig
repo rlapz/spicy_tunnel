@@ -47,12 +47,20 @@ const Endpoint = struct {
         if (!util.validateServerName(cfg.server_name))
             return error.InvalidServerName;
 
+        switch (cfg.endpoint_type) {
+            .CLIENT => log.info("connecting \"{s}\"...", .{cfg.server_name}),
+            .SERVER => log.info("registering \"{s}\"...", .{cfg.server_name}),
+            else => return error.InvalidEndpointType,
+        }
+
         self.bridge_fd = try snet.connectToBridge(
             self.allocator,
             cfg.bridge_host,
             cfg.bridge_port,
         );
+
         try self.sendRequest();
+
         self.recvResponse() catch |err| {
             log.err("{s}", .{@errorName(err)});
             return;
@@ -68,11 +76,12 @@ const Endpoint = struct {
     }
 
     fn stop(self: *Endpoint) void {
-        if (self.is_alive) {
-            self.is_alive = false;
-            if (self.listen_fd) |fd|
-                os.shutdown(fd, .both) catch {};
-        }
+        self.is_alive = false;
+        if (self.listen_fd) |fd|
+            os.shutdown(fd, .both) catch {};
+
+        if (self.bridge_fd) |fd|
+            os.shutdown(fd, .both) catch {};
     }
 
     fn mainLoop(self: *Endpoint) !void {
