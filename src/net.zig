@@ -4,7 +4,7 @@ const net = std.net;
 const os = std.os;
 const log = std.log;
 
-fn setupListener(host: []const u8, port: u16) !os.socket_t {
+pub fn setupListener(host: []const u8, port: u16) !os.socket_t {
     const saddr = try net.Address.parseIp(host, port);
     const sfd = try os.socket(saddr.any.family, os.SOCK.STREAM, os.IPPROTO.TCP);
 
@@ -21,7 +21,7 @@ fn setupListener(host: []const u8, port: u16) !os.socket_t {
     return sfd;
 }
 
-fn connectToBridge(allocator: mem.Allocator, host: []const u8, port: u16) !os.socket_t {
+pub fn connectToBridge(allocator: mem.Allocator, host: []const u8, port: u16) !os.socket_t {
     var addr_list = try net.getAddressList(allocator, host, port);
     defer addr_list.deinit();
 
