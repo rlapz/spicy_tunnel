@@ -46,49 +46,6 @@ pub fn run(self: *Client) !void {
 //
 // private
 //
-fn setupListener(self: *Client) !void {
-    const cfg = &self.config;
-    const saddr = try net.Address.parseIp(cfg.listen_port, cfg.listen_port);
-    const sfd = try os.socket(saddr.any.family, os.SOCK.STREAM, os.IPPROTO.TCP);
-
-    try os.setsockopt(
-        sfd,
-        os.SOL.SOCKET,
-        os.SO.REUSEADDR,
-        &mem.toBytes(@as(c_int, 1)),
-    );
-
-    try os.bind(sfd, &saddr.any, saddr.getOsSockLen());
-    try os.listen(sfd, 10);
-
-    self.listen_fd = sfd;
-}
-
-fn connectToBridge(self: *Client) !void {
-    const cfg = &self.config;
-    var addr_list = try net.getAddressList(
-        self.allocator,
-        cfg.bridge_host,
-        cfg.bridge_port,
-    );
-
-    if (addr_list.addrs.len == 0)
-        return error.UnknownHostName;
-
-    for (addr_list) |a| {
-        const sfd = os.socket(a.any.family, os.SOCK.STREAM, os.IPPROTO.TCP) catch
-            continue;
-
-        os.connect(sfd, &a.any, a.getOsSockLen()) catch
-            continue;
-
-        // success
-        return sfd;
-    }
-
-    return error.ConnectionRefused;
-}
-
 fn sendRequest(self: *Client) !void {
     var req: model.Request = undefined;
     req.setServerName(self.config.server_name);
