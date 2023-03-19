@@ -2,6 +2,7 @@ const std = @import("std");
 const mem = std.mem;
 const net = std.net;
 const os = std.os;
+const log = std.log;
 
 fn setupListener(host: []const u8, port: u16) !os.socket_t {
     const saddr = try net.Address.parseIp(host, port);
@@ -39,6 +40,38 @@ fn connectToBridge(allocator: mem.Allocator, host: []const u8, port: u16) !os.so
     }
 
     return error.ConnectionRefused;
+}
+
+pub fn sendRequest(buffer: []const u8, sfd: os.socket_t) !void {
+    const len = buffer.len;
+    var snt: usize = 0;
+
+    while (snt < len) {
+        const s = try os.send(sfd, buffer[snt..], len - snt, 0);
+        if (s == 0)
+            break;
+
+        snt += s;
+    }
+
+    if (snt != len)
+        return error.BrokenPacket;
+}
+
+pub fn recvResponse(buffer: []u8, sfd: os.socket_t) !void {
+    const len = buffer.len;
+    var rcvd: usize = 0;
+
+    while (rcvd < len) {
+        const r = try os.recv(sfd, buffer[rcvd..], len - rcvd, 0);
+        if (r == 0)
+            break;
+
+        rcvd += r;
+    }
+
+    if (rcvd != len)
+        return error.BrokenPacket;
 }
 
 //
