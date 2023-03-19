@@ -6,30 +6,32 @@ const bridge = @import("bridge.zig");
 const endpoint = @import("endpoint.zig");
 const util = @import("util.zig");
 
-fn showHelp(app: [*:0]const u8) void {
+noinline fn showHelp(app: [*:0]const u8) void {
+    @setCold(true);
     util.stdout(
         \\Spicy Tunnel
         \\
         \\Usages:
         \\ 1. Bridge
-        \\    {s} [listen host] [listen port]
+        \\    {s} bridge [listen host] [listen port]
         \\
         \\    Example:
-        \\      {s} 127.0.0.1 8003
+        \\      {s} bridge 127.0.0.1 8003
         \\
         \\ 2. Server
-        \\    {s} [listen host] [listen port] [bridge host] \
+        \\    {s} server [listen host] [listen port] [bridge host] \
         \\        [bridge port] [name]
         \\
         \\    Example:
-        \\      {s} 127.0.0.1 8002 192.168.0.1 8999 my_server
+        \\      {s} server 127.0.0.1 8002 192.168.0.1 8999 my_server
         \\
         \\ 3. Client
-        \\    {s} [listen host] [listen port] [bridge host] \
+        \\    {s} client [listen host] [listen port] [bridge host] \
         \\        [bridge port] [server name]
         \\
         \\    Example:
-        \\      {s} 127.0.0.1 8001 192.168.0.1 8999 my_server
+        \\      {s} client 127.0.0.1 8001 192.168.0.1 8999 my_server
+        \\
         \\
     ,
         .{ app, app, app, app, app, app },
