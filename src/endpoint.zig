@@ -41,11 +41,11 @@ const Endpoint = struct {
 
     fn run(self: *Endpoint) !void {
         const cfg = &self.config;
-        if (cfg.server_name.len >= model.Request.server_name_size)
-            return error.ServerNameTooLong;
 
-        if (!util.validateServerName(cfg.server_name))
-            return error.InvalidServerName;
+        util.validateServerName(cfg.server_name) catch |err| {
+            log.err("server name: {s}", .{@errorName(err)});
+            return;
+        };
 
         switch (cfg.endpoint_type) {
             .CLIENT => log.info("connecting \"{s}\"...", .{cfg.server_name}),

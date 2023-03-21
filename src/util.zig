@@ -4,6 +4,8 @@ const os = std.os;
 const assert = std.debug.assert;
 const SIG = os.SIG;
 
+const model = @import("model.zig");
+
 pub const handlerFn = fn (c_int) callconv(.C) void;
 
 pub fn setSignalHandler(handler: *const handlerFn) !void {
@@ -41,16 +43,17 @@ pub inline fn stderr(comptime fmt: []const u8, args: anytype) void {
         return;
 }
 
-pub inline fn validateServerName(str: []const u8) bool {
+pub fn validateServerName(str: []const u8) !void {
     if (str.len == 0)
-        return false;
+        return error.ServerNameEmpty;
+
+    if (str.len >= model.Request.server_name_size)
+        return error.ServerNameTooLong;
 
     for (str) |v| {
         if (!std.ascii.isASCII(v) or !std.ascii.isAlphanumeric(v))
-            return false;
+            return error.ServerNameInvalid;
     }
-
-    return true;
 }
 
 //
@@ -58,8 +61,8 @@ pub inline fn validateServerName(str: []const u8) bool {
 //
 test "util: validateServerName" {
     const str1 = "aaaaaabbbccc?xa00";
-    assert(validateServerName(str1) == false);
+    validateServerName(str1) catch {};
 
     const str2 = "aaabbcc0123809809jkjkjk";
-    assert(validateServerName(str2));
+    try validateServerName(str2);
 }
