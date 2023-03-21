@@ -8,10 +8,10 @@ const util = @import("util.zig");
 const snet = @import("net.zig");
 
 pub const Config = struct {
-    bridge_host: []const u8,
-    bridge_port: u16,
     listen_host: []const u8 = "127.0.0.1",
     listen_port: u16 = 8003,
+    bridge_host: []const u8,
+    bridge_port: u16,
     server_name: []const u8,
     buffer_size: usize = 4096,
     endpoint_type: model.Request.Code,

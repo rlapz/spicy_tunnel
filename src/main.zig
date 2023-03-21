@@ -5,6 +5,7 @@ const os = std.os;
 const bridge = @import("bridge.zig");
 const endpoint = @import("endpoint.zig");
 const util = @import("util.zig");
+const model = @import("model.zig");
 
 noinline fn showHelp(app: [*:0]const u8) void {
     @setCold(true);
@@ -38,6 +39,27 @@ noinline fn showHelp(app: [*:0]const u8) void {
     );
 }
 
+fn runBridge(argv: [][*:0]u8) !void {
+    // TODO
+    _ = argv;
+    return bridge.run(.{});
+}
+
+fn runEndpoint(argv: [][*:0]u8, e_type: model.Request.Code) !void {
+    if (argv.len != 7)
+        return error.InvalidArgument;
+
+    // TODO: parse port
+    return endpoint.run(.{
+        .listen_host = mem.span(argv[2]),
+        .listen_port = 0,
+        .bridge_host = mem.span(argv[4]),
+        .bridge_port = 0,
+        .server_name = mem.span(argv[6]),
+        .endpoint_type = e_type,
+    });
+}
+
 pub fn main() !void {
     var need_help = true;
     const argv = os.argv;
@@ -48,16 +70,12 @@ pub fn main() !void {
         return error.InvalidArgument;
 
     const stype = mem.span(argv[1]);
-    if (mem.eql(u8, stype, "bridge")) {
-        if (argv.len != 4)
-            return error.InvalidArgument;
-    } else if (mem.eql(u8, stype, "server")) {
-        if (argv.len != 7)
-            return error.InvalidArgument;
-    } else if (mem.eql(u8, stype, "client")) {
-        if (argv.len != 7)
-            return error.InvalidArgument;
-    } else {
-        return error.InvalidArgument;
-    }
+    if (mem.eql(u8, stype, "bridge"))
+        return runBridge(argv)
+    else if (mem.eql(u8, stype, "server"))
+        return runEndpoint(argv, .SERVER)
+    else if (mem.eql(u8, stype, "client"))
+        return runEndpoint(argv, .CLIENT);
+
+    return error.InvalidArgument;
 }
