@@ -1,4 +1,5 @@
 const std = @import("std");
+const fmt = std.fmt;
 const mem = std.mem;
 const os = std.os;
 
@@ -40,21 +41,21 @@ noinline fn showHelp(app: [*:0]const u8) void {
 }
 
 fn runBridge(argv: [][*:0]u8) !void {
-    // TODO
-    _ = argv;
-    return bridge.run(.{});
+    return bridge.run(.{
+        .listen_host = mem.span(argv[2]),
+        .listen_port = try fmt.parseUnsigned(u16, mem.span(argv[3]), 10),
+    });
 }
 
 fn runEndpoint(argv: [][*:0]u8, e_type: model.Request.Code) !void {
     if (argv.len != 7)
         return error.InvalidArgument;
 
-    // TODO: parse port
     return endpoint.run(.{
         .listen_host = mem.span(argv[2]),
-        .listen_port = 0,
+        .listen_port = try fmt.parseUnsigned(u16, mem.span(argv[3]), 10),
         .bridge_host = mem.span(argv[4]),
-        .bridge_port = 0,
+        .bridge_port = try fmt.parseUnsigned(u16, mem.span(argv[5]), 10),
         .server_name = mem.span(argv[6]),
         .endpoint_type = e_type,
     });
