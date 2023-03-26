@@ -42,8 +42,10 @@ noinline fn showHelp(app: [*:0]const u8) void {
 
 fn runBridge(argv: [][*:0]u8) !void {
     return bridge.run(.{
-        .listen_host = mem.span(argv[2]),
-        .listen_port = try fmt.parseUnsigned(u16, mem.span(argv[3]), 10),
+        .listen = .{
+            .host = mem.span(argv[2]),
+            .port = try fmt.parseUnsigned(u16, mem.span(argv[3]), 10),
+        },
     });
 }
 
