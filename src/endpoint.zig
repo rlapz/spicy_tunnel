@@ -90,12 +90,7 @@ const Endpoint = struct {
         log.info("new client: {}", .{cfd});
 
         self.is_alive = true;
-        return snet.forward(
-            self.bridge_fd.?,
-            cfd,
-            self.config.buffer_size,
-            &self.is_alive,
-        );
+        return self.forward();
     }
 
     fn sendRequest(self: *Endpoint) !void {
@@ -106,7 +101,17 @@ const Endpoint = struct {
         req.setServerName(self.config.server_name);
         req.code = self.config.endpoint_type;
 
-        return snet.sendRequest(buff, self.bridge_fd.?);
+        var snt: usize = 0;
+        while (snt < buff.len) {
+            const s = try os.send(self.bridge_fd.?, buff[snt..], 0);
+            if (s == 0)
+                break;
+
+            snt += s;
+        }
+
+        if (snt != buff.len)
+            return error.BrokenPacket;
     }
 
     fn recvResponse(self: *Endpoint) !void {
@@ -114,7 +119,18 @@ const Endpoint = struct {
         var buff = mem.asBytes(&res);
 
         @memset(buff, 0, @sizeOf(@TypeOf(res)));
-        try snet.recvResponse(buff, self.bridge_fd.?);
+
+        var rcvd: usize = 0;
+        while (rcvd < buff.len) {
+            const r = try os.recv(self.bridge_fd.?, buff[rcvd..], 0);
+            if (r == 0)
+                break;
+
+            rcvd += r;
+        }
+
+        if (rcvd != buff.len)
+            return error.BrokenPacket;
 
         log.info("response: {s}\n", .{res.getMessage()});
         return switch (res.code) {
@@ -122,6 +138,41 @@ const Endpoint = struct {
             .REJECTED => error.Rejected,
             else => error.InvalidResponseCode,
         };
+    }
+
+    fn forward(self: *Endpoint) !void {
+        const src = self.listen_fd.?;
+        const dst = self.bridge_fd.?;
+
+        var pfds: [2]os.pollfd = undefined;
+        pfds[0].events = os.POLL.IN;
+        pfds[1].events = os.POLL.IN;
+        pfds[0].fd = src;
+        pfds[1].fd = dst;
+
+        const pipe = try os.pipe();
+        defer for (pipe) |p|
+            os.close(p);
+
+        const size = self.config.buffer_size;
+        while (self.is_alive) {
+            if ((try os.poll(&pfds, 1000)) == 0)
+                continue;
+
+            if ((pfds[0].revents & os.POLL.IN) != 0) {
+                snet.spipe(src, dst, pipe, size) catch |err| switch (err) {
+                    error.WouldBlock => continue,
+                    else => break,
+                };
+            }
+
+            if ((pfds[1].revents & os.POLL.IN) != 0) {
+                snet.spipe(dst, src, pipe, size) catch |err| switch (err) {
+                    error.WouldBlock => continue,
+                    else => break,
+                };
+            }
+        }
     }
 };
 

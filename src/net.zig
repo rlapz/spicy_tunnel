@@ -43,38 +43,6 @@ pub fn connectToBridge(allocator: mem.Allocator, host: []const u8, port: u16) !o
     return error.ConnectionRefused;
 }
 
-pub fn sendRequest(buffer: []const u8, sfd: os.socket_t) !void {
-    const len = buffer.len;
-    var snt: usize = 0;
-
-    while (snt < len) {
-        const s = try os.send(sfd, buffer[snt..], 0);
-        if (s == 0)
-            break;
-
-        snt += s;
-    }
-
-    if (snt != len)
-        return error.BrokenPacket;
-}
-
-pub fn recvResponse(buffer: []u8, sfd: os.socket_t) !void {
-    const len = buffer.len;
-    var rcvd: usize = 0;
-
-    while (rcvd < len) {
-        const r = try os.recv(sfd, buffer[rcvd..], 0);
-        if (r == 0)
-            break;
-
-        rcvd += r;
-    }
-
-    if (rcvd != len)
-        return error.BrokenPacket;
-}
-
 pub fn splice(in: os.fd_t, out: os.fd_t, size: usize, flags: u32) !usize {
     const rc = linux.syscall6(
         .splice,
@@ -98,7 +66,7 @@ pub fn splice(in: os.fd_t, out: os.fd_t, size: usize, flags: u32) !usize {
     }
 }
 
-pub fn spipe(in: os.fd_t, out: os.fd_t, pipe: [*]const os.fd_t, size: usize) !void {
+pub fn spipe(in: os.fd_t, out: os.fd_t, pipe: [2]os.fd_t, size: usize) !void {
     const flags = 0x1 | 0x2; // MOVE | NONBLOCK
     var rd = try splice(in, pipe[1], size, flags);
     if (rd == 0)
@@ -110,37 +78,6 @@ pub fn spipe(in: os.fd_t, out: os.fd_t, pipe: [*]const os.fd_t, size: usize) !vo
             return error.EndOfFile;
 
         rd -= wr;
-    }
-}
-
-pub fn forward(dest: os.fd_t, src: os.fd_t, size: usize, is_alive: *bool) !void {
-    var pfds: [2]os.pollfd = undefined;
-    pfds[0].events = os.POLL.IN;
-    pfds[0].fd = src;
-    pfds[1].events = os.POLL.IN;
-    pfds[1].fd = dest;
-
-    const pipe = try os.pipe();
-    defer for (pipe) |p|
-        os.close(p);
-
-    while (is_alive.*) {
-        if ((try os.poll(&pfds, 1000)) == 0)
-            continue;
-
-        if ((pfds[0].revents & os.POLL.IN) != 0) {
-            spipe(src, dest, &pipe, size) catch |err| switch (err) {
-                error.WouldBlock => continue,
-                else => break,
-            };
-        }
-
-        if ((pfds[1].revents & os.POLL.IN) != 0) {
-            spipe(dest, src, &pipe, size) catch |err| switch (err) {
-                error.WouldBlock => continue,
-                else => break,
-            };
-        }
     }
 }
 
