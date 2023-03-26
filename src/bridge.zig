@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const heap = std.heap;
 const log = std.log;
 const mem = std.mem;
@@ -314,14 +315,33 @@ const Bridge = struct {
 // Entrypoint
 //
 var bridge_g: *Bridge = undefined;
-pub fn run(config: Config) !void {
-    var b = try Bridge.init(std.heap.page_allocator, config);
+
+fn runSafe(config: Config) !void {
+    var gpa = heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+
+    var b = try Bridge.init(gpa.allocator(), config);
     defer b.deinit();
 
     bridge_g = &b;
     try util.setSignalHandler(intrHandler);
 
     return b.run();
+}
+
+pub fn run(config: Config) !void {
+    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        log.info("Release {}", .{builtin.mode});
+        return runSafe(config);
+    } else {
+        var b = try Bridge.init(std.heap.page_allocator, config);
+        defer b.deinit();
+
+        bridge_g = &b;
+        try util.setSignalHandler(intrHandler);
+
+        return b.run();
+    }
 }
 
 // private
