@@ -12,13 +12,14 @@ const model = @import("model.zig");
 const util = @import("util.zig");
 const snet = @import("net.zig");
 
+const buffer_size = 4096;
+
 pub const Config = struct {
     listen: struct {
         host: []const u8 = "127.0.0.1",
         port: u16 = 8001,
     } = .{},
     connection_max: u16 = 32,
-    buffer_size: usize = 4096,
 };
 
 const Endpoint = struct {
@@ -56,6 +57,8 @@ const Endpoint = struct {
             p.unset();
             self.peer = null;
         }
+
+        // TODO: call delEndpoint
 
         if (self.is_server) {
             if (self.pipe) |pipe| for (pipe) |p|
@@ -97,25 +100,27 @@ const Endpoint = struct {
 
     fn handleHandshakeRecv(self: *Endpoint) State {
         _ = self;
-        return .FORWARD;
+        return .DONE;
     }
 
     fn handleHandshakeSend(self: *Endpoint) State {
         _ = self;
-        return .FORWARD;
+        return .DONE;
     }
 
     inline fn handleForward(self: *Endpoint) State {
-        return snet.spipe(
+        snet.spipe(
             self.peer.?.sock_fd,
             self.sock_fd,
             self.pipe.?,
-            self.config.buffer_size,
+            buffer_size,
         ) catch |err| switch (err) {
-            error.WouldBlock => .FORWARD,
-            error.EndOfFile => .DONE,
-            else => .FAILED,
+            error.WouldBlock => return .FORWARD,
+            error.EndOfFile => return .DONE,
+            else => {},
         };
+
+        return .FAILED;
     }
 };
 
@@ -130,20 +135,25 @@ const Bridge = struct {
     sock_fd: ?os.socket_t,
     pollfds: []os.pollfd,
     server_map: ServerMap,
-    endpoint_map: EndpointMap,
     endpoint_pool: []Endpoint,
+    indexer: []usize,
+    count: usize,
     slots: SlotArray,
 
     fn init(allocator: mem.Allocator, config: Config) !Bridge {
-        var size = config.connection_max;
+        const size = config.connection_max;
         var pollfds = try allocator.alloc(os.pollfd, size + 1);
         errdefer allocator.free(pollfds);
+
+        var indexer = try allocator.alloc(usize, size);
+        errdefer allocator.free(indexer);
 
         var slots = try SlotArray.initCapacity(allocator, size);
         errdefer slots.deinit();
 
-        while (size > 0) : (size -= 1)
-            try slots.append(size - 1);
+        var i = size;
+        while (i > 0) : (i -= 1)
+            try slots.append(i - 1);
 
         return .{
             .allocator = allocator,
@@ -152,17 +162,18 @@ const Bridge = struct {
             .sock_fd = null,
             .pollfds = pollfds,
             .server_map = ServerMap.init(allocator),
-            .endpoint_map = EndpointMap.init(allocator),
             .endpoint_pool = try allocator.alloc(Endpoint, size),
             .slots = slots,
+            .indexer = indexer,
+            .count = 0,
         };
     }
 
     fn deinit(self: *Bridge) void {
         self.allocator.free(self.pollfds);
         self.allocator.free(self.endpoint_pool);
+        self.allocator.free(self.indexer);
         self.server_map.deinit();
-        self.endpoint_map.deinit();
         self.slots.deinit();
 
         self.* = undefined;
@@ -170,11 +181,42 @@ const Bridge = struct {
 
     fn run(self: *Bridge) !void {
         const listen = &self.config.listen;
-        self.sock_fd = try snet.setupListener(listen.host, listen.port);
-        self.is_alive = true;
+        const sock_fd = try snet.setupListener(listen.host, listen.port);
+        self.sock_fd = sock_fd;
 
-        // TODO: main loop
-        while (self.is_alive) {}
+        self.pollfds[0].fd = sock_fd;
+        self.pollfds[0].events = os.POLL.IN | os.POLL.PRI;
+        self.count += 1;
+
+        self.is_alive = true;
+        while (self.is_alive) {
+            const fds = self.pollfds[0..];
+            if (try std.os.poll(fds, 1000) == 0)
+                continue;
+
+            self.handleEvents();
+        }
+    }
+
+    inline fn handleEvents(self: *Bridge) void {
+        var iter: usize = 0;
+        var count = self.count;
+
+        while (iter < count) : (iter += 1) {
+            if (self.pollfds[iter].revents != os.POLL.IN)
+                continue;
+
+            if (iter == 0) {
+                self.addEndpoint() catch |err|
+                    log.err("err: {s}", .{@errorName(err)});
+                continue;
+            }
+
+            iter = switch (self.endpoint_pool[self.indexer[iter - 1]].handle()) {
+                .FAILED, .DONE => self.delEndpoint(iter, &count),
+                else => iter,
+            };
+        }
     }
 
     // TODO: Close all socket descriptors
@@ -184,8 +226,8 @@ const Bridge = struct {
             os.shutdown(fd, .both) catch {};
     }
 
-    // TODO: pollfds map
-    fn addEndpoint(self: *Bridge, fd: os.socket_t) !void {
+    fn addEndpoint(self: *Bridge) !void {
+        const fd = try os.accept(self.sock_fd.?, null, null, 0);
         const slot = self.slots.popOrNull() orelse
             return error.SlotFull;
 
@@ -193,29 +235,58 @@ const Bridge = struct {
             unreachable;
 
         try self.endpoint_pool[slot].set(fd, self);
+
+        const count = self.count;
+        self.indexer[count - 1] = slot;
+
+        self.pollfds[count].fd = fd;
+        self.pollfds[count].events = std.os.POLL.IN;
+        self.count = count + 1;
+
+        log.debug(
+            "New connection: fd: {}, count: {}, slot: {}",
+            .{ fd, self.count, slot },
+        );
     }
 
-    // TODO: pollfds map
-    fn delEndpoint(self: *Bridge, idx: usize) void {
-        self.endpoint_pool[idx].unset();
+    fn delEndpoint(self: *Bridge, index: usize, count: *usize) usize {
+        const slot_curr = self.indexer[index - 1];
 
-        self.slots.append(idx) catch
+        self.slots.append(slot_curr) catch
             unreachable;
+
+        log.debug("Closed connection: fd: {}, count: {}, slot: {}", .{
+            self.endpoint_pool[slot_curr].sock_fd,
+            count.*,
+            slot_curr,
+        });
+
+        const _count = count.*;
+        self.indexer[index - 1] = self.indexer[_count - 2];
+        self.pollfds[index] = self.pollfds[_count - 1];
+
+        self.endpoint_pool[slot_curr].unset();
+
+        count.* = _count - 1;
+        self.count = _count - 1;
+
+        return (index - 1);
     }
 
     fn addServer(self: *Bridge, name: []const u8, srv: *Endpoint) !void {
-        if (self.server_map.contains(name))
-            return error.ServerAlreadyExists;
-
-        try self.server_map.put(name, srv);
+        self.server_map.putNoClobber(name, srv) catch
+            return error.ServerExists;
     }
 
     fn delServer(self: *Bridge, name: []const u8) void {
         _ = self.server_map.swapRemove(name);
     }
 
-    fn chkServer(self: *Bridge, name: []const u8) bool {
-        return self.server_map.contains(name);
+    fn getServer(self: *Bridge, name: []const u8) !*Endpoint {
+        if (self.server_map.fetchSwapRemove(name)) |kv|
+            return kv.value;
+
+        return error.NoSuchServer;
     }
 };
 
