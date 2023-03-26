@@ -35,7 +35,7 @@ const Endpoint = struct {
     ctx: *Bridge,
     peer: ?*Endpoint,
 
-    const State = enum {
+    const State = enum(u32) {
         HANDSHAKE_RECV,
         HANDSHAKE_SEND,
         FORWARD,
@@ -108,8 +108,29 @@ const Endpoint = struct {
     }
 
     fn handleHandshakeRecv(self: *Endpoint) State {
-        _ = self;
-        return .DONE;
+        const req_size = @sizeOf(model.Request);
+
+        var recvd = self.bytes;
+        if (recvd < req_size) {
+            var buff = mem.asBytes(&self.request);
+            const r = os.read(self.sock_fd, buff[recvd..]) catch
+                return .FAILED;
+
+            if (r == 0)
+                return .DONE;
+
+            recvd += r;
+            self.bytes = recvd;
+            return .HANDSHAKE_RECV;
+        }
+
+        if (recvd != req_size)
+            return .FAILED;
+
+        self.bytes = 0;
+
+        // TODO: modify pollfd events: POLLOUT
+        return .HANDSHAKE_SEND;
     }
 
     fn handleHandshakeSend(self: *Endpoint) State {
