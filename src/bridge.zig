@@ -23,6 +23,7 @@ pub const Config = struct {
 };
 
 const Endpoint = struct {
+    slot: usize,
     state: State,
     is_server: bool,
     sock_fd: os.socket_t,
@@ -41,7 +42,8 @@ const Endpoint = struct {
         DONE,
     };
 
-    fn set(self: *Endpoint, sock_fd: os.socket_t, ctx: *Bridge) !void {
+    fn set(self: *Endpoint, slot: usize, sock_fd: os.socket_t, ctx: *Bridge) !void {
+        self.slot = slot;
         self.is_server = false;
         self.sock_fd = sock_fd;
         self.pipe = null;
@@ -51,14 +53,18 @@ const Endpoint = struct {
         self.peer = null;
     }
 
-    fn unset(self: *Endpoint) void {
+    // returns index of closed peer if any, otherwise null
+    fn unset(self: *Endpoint) ?usize {
         os.closeSocket(self.sock_fd);
-        if (self.peer) |p| {
-            p.unset();
-            self.peer = null;
-        }
 
-        // TODO: call delEndpoint
+        const ret = if (self.peer) |p| brk: {
+            const slot = p.slot;
+            _ = p.unset();
+            self.peer = null;
+            break :brk slot;
+        } else brk: {
+            break :brk null;
+        };
 
         if (self.is_server) {
             if (self.pipe) |pipe| for (pipe) |p|
@@ -66,6 +72,8 @@ const Endpoint = struct {
 
             self.ctx.delServer(self.request.getServerName());
         }
+
+        return ret;
     }
 
     fn setAsServer(self: *Endpoint) !void {
@@ -234,7 +242,7 @@ const Bridge = struct {
         errdefer self.slots.append(slot) catch
             unreachable;
 
-        try self.endpoint_pool[slot].set(fd, self);
+        try self.endpoint_pool[slot].set(slot, fd, self);
 
         const count = self.count;
         self.indexer[count - 1] = slot;
@@ -250,6 +258,7 @@ const Bridge = struct {
     }
 
     fn delEndpoint(self: *Bridge, index: usize, count: *usize) usize {
+        var _count = count.*;
         const slot_curr = self.indexer[index - 1];
 
         self.slots.append(slot_curr) catch
@@ -261,16 +270,27 @@ const Bridge = struct {
             slot_curr,
         });
 
-        const _count = count.*;
-        self.indexer[index - 1] = self.indexer[_count - 2];
-        self.pollfds[index] = self.pollfds[_count - 1];
+        var sub: u8 = 0;
+        if (self.endpoint_pool[slot_curr].unset()) |v| {
+            const _slot = self.indexer[v - 1];
+            self.slots.append(_slot) catch
+                unreachable;
 
-        self.endpoint_pool[slot_curr].unset();
+            self.indexer[v - 1] = self.indexer[_count - 2];
+            self.pollfds[v] = self.pollfds[_count - 1];
+            sub += 1;
 
-        count.* = _count - 1;
-        self.count = _count - 1;
+            log.debug("any closed peer", .{});
+        }
 
-        return (index - 1);
+        _count -= sub;
+        self.indexer[index - 1] = self.indexer[_count - 1];
+        self.pollfds[index] = self.pollfds[_count];
+
+        count.* = _count;
+        self.count = _count;
+
+        return (index - sub);
     }
 
     fn addServer(self: *Bridge, name: []const u8, srv: *Endpoint) !void {
