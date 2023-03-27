@@ -113,8 +113,12 @@ const Endpoint = struct {
         var recvd = self.bytes;
         if (recvd < req_size) {
             var buff = mem.asBytes(&self.request);
-            const r = os.read(self.sock_fd, buff[recvd..]) catch
+            const r = os.read(self.sock_fd, buff[recvd..]) catch |err| {
+                if (err == error.WouldBlock)
+                    return .HANDSHAKE_RECV;
+
                 return .FAILED;
+            };
 
             if (r == 0)
                 return .DONE;
@@ -128,6 +132,7 @@ const Endpoint = struct {
             return .FAILED;
 
         self.bytes = 0;
+        log.debug("name: {s}", .{self.request.getServerName()});
 
         // TODO: modify pollfd events: POLLOUT
         return .HANDSHAKE_SEND;
@@ -257,7 +262,7 @@ const Bridge = struct {
     }
 
     fn addEndpoint(self: *Bridge) !void {
-        const fd = try os.accept(self.sock_fd.?, null, null, 0);
+        const fd = try os.accept(self.sock_fd.?, null, null, os.SOCK.NONBLOCK);
         const slot = self.slots.popOrNull() orelse
             return error.SlotFull;
 
