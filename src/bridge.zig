@@ -161,7 +161,7 @@ const Endpoint = struct {
                 return .DONE;
 
             recvd += r;
-            if (recvd == req_size)
+            if (recvd >= req_size)
                 break :brk;
 
             self.bytes = recvd;
@@ -209,7 +209,7 @@ const Endpoint = struct {
         const res_size = @sizeOf(model.Response);
 
         var sent = self.bytes;
-        if (sent < res_size) {
+        if (sent < res_size) brk: {
             var buff = mem.asBytes(&self.response);
             const s = os.send(self.sock_fd, buff[sent..], 0) catch |err| {
                 if (err == error.WouldBlock)
@@ -222,6 +222,9 @@ const Endpoint = struct {
                 return .DONE;
 
             sent += s;
+            if (sent >= res_size)
+                break :brk;
+
             self.bytes = sent;
             return .HANDSHAKE_SEND;
         }
