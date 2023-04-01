@@ -8,8 +8,8 @@ const util = @import("util.zig");
 const snet = @import("net.zig");
 
 pub const Config = struct {
-    listen_host: []const u8 = "127.0.0.1",
-    listen_port: u16 = 8003,
+    general_host: []const u8 = "127.0.0.1",
+    general_port: u16 = 8002,
     bridge_host: []const u8,
     bridge_port: u16,
     server_name: []const u8,
@@ -21,7 +21,7 @@ const Endpoint = struct {
     allocator: mem.Allocator,
     config: Config,
     is_alive: bool = false,
-    listen_fd: ?os.socket_t = null,
+    socket_fd: ?os.socket_t = null,
     bridge_fd: ?os.socket_t = null,
 
     fn init(allocator: mem.Allocator, config: Config) Endpoint {
@@ -32,14 +32,14 @@ const Endpoint = struct {
     }
 
     fn deinit(self: *Endpoint) void {
-        if (self.listen_fd) |fd|
+        if (self.socket_fd) |fd|
             os.closeSocket(fd);
 
         if (self.bridge_fd) |fd|
             os.closeSocket(fd);
     }
 
-    fn run(self: *Endpoint) !void {
+    fn runServer(self: *Endpoint) !void {
         const cfg = &self.config;
 
         util.validateServerName(cfg.server_name) catch |err| {
@@ -47,13 +47,14 @@ const Endpoint = struct {
             return;
         };
 
-        switch (cfg.endpoint_type) {
-            .CLIENT => log.info("connecting \"{s}\"...", .{cfg.server_name}),
-            .SERVER => log.info("registering \"{s}\"...", .{cfg.server_name}),
-            else => return error.InvalidEndpointType,
-        }
+        self.socket_fd = try snet.connectTo(
+            self.allocator,
+            cfg.general_host,
+            cfg.general_port,
+        );
 
-        self.bridge_fd = try snet.connectToBridge(
+        log.info("registering \"{s}\"...", .{cfg.server_name});
+        self.bridge_fd = try snet.connectTo(
             self.allocator,
             cfg.bridge_host,
             cfg.bridge_port,
@@ -66,38 +67,62 @@ const Endpoint = struct {
             return;
         };
 
-        log.info("listening on: [{s}:{}] -> \"{s}\"\n", .{
-            cfg.listen_host,
-            cfg.listen_port,
+        self.is_alive = true;
+        return self.forward();
+    }
+
+    fn runClient(self: *Endpoint) !void {
+        const cfg = &self.config;
+
+        util.validateServerName(cfg.server_name) catch |err| {
+            log.err("server name: {s}", .{@errorName(err)});
+            return;
+        };
+
+        log.info("connecting \"{s}\"...", .{cfg.server_name});
+
+        self.bridge_fd = try snet.connectTo(
+            self.allocator,
+            cfg.bridge_host,
+            cfg.bridge_port,
+        );
+
+        try self.sendRequest();
+
+        self.recvResponse() catch |err| {
+            log.err("{s}", .{@errorName(err)});
+            return;
+        };
+
+        log.info("listening on: [{s}:{}] -> \"{s}\"", .{
+            cfg.general_host,
+            cfg.general_port,
             cfg.server_name,
         });
-        self.listen_fd = try snet.setupListener(cfg.listen_host, cfg.listen_port);
-        return self.mainLoop();
+
+        const lfd = try snet.setupListener(cfg.general_host, cfg.general_port);
+        self.socket_fd = try os.accept(lfd, null, null, os.SOCK.NONBLOCK);
+
+        log.info("new client: {}", .{self.socket_fd.?});
+
+        self.is_alive = true;
+        return self.forward();
     }
 
     fn stop(self: *Endpoint) void {
         self.is_alive = false;
-        if (self.listen_fd) |fd|
+        if (self.socket_fd) |fd|
             os.shutdown(fd, .both) catch {};
 
         if (self.bridge_fd) |fd|
             os.shutdown(fd, .both) catch {};
     }
 
-    fn mainLoop(self: *Endpoint) !void {
-        const cfd = try os.accept(self.listen_fd.?, null, null, os.SOCK.NONBLOCK);
-
-        log.info("new client: {}", .{cfd});
-
-        self.is_alive = true;
-        return self.forward();
-    }
-
     fn sendRequest(self: *Endpoint) !void {
         var req: model.Request = undefined;
         var buff = mem.asBytes(&req);
 
-        @memset(buff, 0, @sizeOf(@TypeOf(req)));
+        @memset(buff, 0, buff.len);
         req.setServerName(self.config.server_name);
         req.code = self.config.endpoint_type;
 
@@ -118,7 +143,7 @@ const Endpoint = struct {
         var res: model.Response = undefined;
         var buff = mem.asBytes(&res);
 
-        @memset(buff, 0, @sizeOf(@TypeOf(res)));
+        @memset(buff, 0, buff.len);
 
         var rcvd: usize = 0;
         while (rcvd < buff.len) {
@@ -132,7 +157,7 @@ const Endpoint = struct {
         if (rcvd != buff.len)
             return error.BrokenPacket;
 
-        log.info("response: {s}\n", .{res.getMessage()});
+        log.info("response: {s}", .{res.getMessage()});
         return switch (res.code) {
             .ACCEPTED => {},
             .REJECTED => error.Rejected,
@@ -141,7 +166,7 @@ const Endpoint = struct {
     }
 
     fn forward(self: *Endpoint) !void {
-        const src = self.listen_fd.?;
+        const src = self.socket_fd.?;
         const dst = self.bridge_fd.?;
 
         var pfds: [2]os.pollfd = undefined;
@@ -187,7 +212,11 @@ pub fn run(config: Config) !void {
     endpoint_g = &e;
     try util.setSignalHandler(intrHandler);
 
-    return e.run();
+    return switch (config.endpoint_type) {
+        .CLIENT => e.runClient(),
+        .SERVER => e.runServer(),
+        else => error.InvalidEndpointType,
+    };
 }
 
 // private

@@ -22,7 +22,7 @@ pub fn setupListener(host: []const u8, port: u16) !os.socket_t {
     return sfd;
 }
 
-pub fn connectToBridge(allocator: mem.Allocator, host: []const u8, port: u16) !os.socket_t {
+pub fn connectTo(allocator: mem.Allocator, host: []const u8, port: u16) !os.socket_t {
     var addr_list = try net.getAddressList(allocator, host, port);
     defer addr_list.deinit();
 
@@ -90,6 +90,6 @@ test "setupListener" {
 }
 
 test "connectToBridge" {
-    const fd = try connectToBridge(std.testing.allocator, "127.0.0.1", 80);
+    const fd = try connectTo(std.testing.allocator, "127.0.0.1", 80);
     defer os.closeSocket(fd);
 }

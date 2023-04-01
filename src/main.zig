@@ -21,7 +21,7 @@ noinline fn showHelp(app: [*:0]const u8) void {
         \\      {s} bridge 127.0.0.1 8003
         \\
         \\ 2. Server
-        \\    {s} server [listen host] [listen port] [bridge host] \
+        \\    {s} server [target host] [target port] [bridge host] \
         \\        [bridge port] [name]
         \\
         \\    Example:
@@ -54,8 +54,8 @@ fn runEndpoint(argv: [][*:0]u8, e_type: model.Request.Code) !void {
         return error.InvalidArgument;
 
     return endpoint.run(.{
-        .listen_host = mem.span(argv[2]),
-        .listen_port = try fmt.parseUnsigned(u16, mem.span(argv[3]), 10),
+        .general_host = mem.span(argv[2]),
+        .general_port = try fmt.parseUnsigned(u16, mem.span(argv[3]), 10),
         .bridge_host = mem.span(argv[4]),
         .bridge_port = try fmt.parseUnsigned(u16, mem.span(argv[5]), 10),
         .server_name = mem.span(argv[6]),
