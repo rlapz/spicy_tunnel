@@ -21,6 +21,7 @@ const Endpoint = struct {
     allocator: mem.Allocator,
     config: Config,
     is_alive: bool = false,
+    listen_fd: ?os.socket_t = null,
     socket_fd: ?os.socket_t = null,
     bridge_fd: ?os.socket_t = null,
 
@@ -36,6 +37,9 @@ const Endpoint = struct {
             os.closeSocket(fd);
 
         if (self.bridge_fd) |fd|
+            os.closeSocket(fd);
+
+        if (self.listen_fd) |fd|
             os.closeSocket(fd);
     }
 
@@ -101,7 +105,10 @@ const Endpoint = struct {
         });
 
         const lfd = try snet.setupListener(cfg.general_host, cfg.general_port);
-        self.socket_fd = try os.accept(lfd, null, null, os.SOCK.NONBLOCK);
+        self.listen_fd = lfd;
+
+        self.socket_fd = os.accept(lfd, null, null, os.SOCK.NONBLOCK) catch
+            return;
 
         log.info("new client: {}", .{self.socket_fd.?});
 
@@ -111,11 +118,20 @@ const Endpoint = struct {
 
     fn stop(self: *Endpoint) void {
         self.is_alive = false;
-        if (self.socket_fd) |fd|
+        if (self.socket_fd) |fd| {
             os.shutdown(fd, .both) catch {};
+            self.socket_fd = null;
+        }
 
-        if (self.bridge_fd) |fd|
+        if (self.bridge_fd) |fd| {
             os.shutdown(fd, .both) catch {};
+            self.bridge_fd = null;
+        }
+
+        if (self.listen_fd) |fd| {
+            os.shutdown(fd, .both) catch {};
+            self.listen_fd = null;
+        }
     }
 
     fn sendRequest(self: *Endpoint) !void {
@@ -181,6 +197,7 @@ const Endpoint = struct {
 
         const size = self.config.buffer_size;
         while (self.is_alive) {
+            log.debug("...", .{});
             if ((try os.poll(&pfds, 1000)) == 0)
                 continue;
 

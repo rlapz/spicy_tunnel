@@ -23,11 +23,9 @@ pub fn setSignalHandler(handler: *const handlerFn) !void {
 
 pub fn toSlice(src: [*]const u8, size: usize) []const u8 {
     var i: usize = 0;
-    while (i < size) {
+    while (i < size) : (i += 1) {
         if (src[i] == '\x00')
             break;
-
-        i += 1;
     }
 
     return src[0..i];
